@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ADMIN | CONVERGENCE</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; color: #1f2937; -webkit-tap-highlight-color: transparent; }
+        .card { background: #ffffff; border-radius: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 1px solid #e5e7eb; }
+        .btn-press:active { transform: scale(0.97); }
+        .loader { border: 3px solid #f3f3f3; border-top: 3px solid #3b82f6; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="pb-24 bg-gray-50">
+
+    <div id="loginScreen" class="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center p-6">
+        <h1 class="text-3xl font-bold tracking-tight text-blue-600 mb-2">CONVERGENCE</h1>
+        <p class="text-gray-400 text-sm mb-8">ADMINISTRATION</p>
+        
+        <div class="w-full max-w-xs space-y-4">
+            <input type="tel" id="passInput" placeholder="ENTER PIN" maxlength="4" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-4 text-center text-2xl tracking-[0.5em] focus:border-blue-500 outline-none transition-all text-gray-800 font-bold">
+            <button onclick="unlock()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-200 btn-press transition-all">
+                VERIFY ACCESS
+            </button>
+        </div>
+    </div>
+
+    <section id="tab-verify" class="p-4 max-w-lg mx-auto">
+        <header class="flex justify-between items-center mb-6 pt-2">
+            <div>
+                <h2 class="text-2xl font-bold text-gray-900">Payments</h2>
+                <p class="text-xs text-gray-500">Pending Verification</p>
+            </div>
+            <button onclick="fetchPending()" class="w-10 h-10 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center active:bg-gray-50 text-blue-600">
+                <i class="fa-solid fa-arrows-rotate"></i>
+            </button>
+        </header>
+
+        <div class="relative mb-6">
+            <i class="fa-solid fa-search absolute left-4 top-3.5 text-gray-400"></i>
+            <input type="text" id="searchInput" onkeyup="filterList()" placeholder="Search Name or UTR..." class="w-full bg-white border border-gray-200 rounded-xl pl-10 pr-4 py-3 focus:border-blue-500 outline-none text-sm shadow-sm">
+        </div>
+
+        <div id="pendingList" class="space-y-3">
+            <div class="text-center py-10 text-gray-400">Loading data...</div>
+        </div>
+    </section>
+
+    <section id="tab-scan" class="hidden p-4 h-[85vh] flex flex-col items-center justify-center bg-white">
+        <div class="text-center mb-8">
+            <h2 class="text-2xl font-bold text-gray-900">Scan Token</h2>
+            <p class="text-gray-500 text-sm">Align QR code within frame</p>
+        </div>
+        
+        <div id="reader" class="w-full max-w-xs bg-black rounded-2xl overflow-hidden shadow-xl"></div>
+        
+        <div id="scanResult" class="fixed bottom-24 left-4 right-4 bg-white p-6 rounded-2xl border border-gray-100 shadow-2xl transform translate-y-[120%] transition-transform duration-300 z-40">
+            <div class="flex items-start gap-4">
+                <div id="scanIcon" class="w-12 h-12 rounded-full flex items-center justify-center text-xl shrink-0"></div>
+                <div>
+                    <h3 id="scanTitle" class="text-lg font-bold mb-1 text-gray-900"></h3>
+                    <p id="scanMeta" class="text-sm text-gray-500 font-mono"></p>
+                </div>
+            </div>
+            <button onclick="closeScanResult()" class="mt-5 w-full bg-gray-100 text-gray-700 py-3 rounded-xl text-sm font-bold hover:bg-gray-200">SCAN NEXT</button>
+        </div>
+    </section>
+
+    <nav id="bottomNav" class="fixed bottom-0 left-0 w-full bg-white/90 backdrop-blur-md border-t border-gray-200 flex justify-around p-2 z-40 hidden">
+        <button onclick="switchTab('verify')" class="flex-1 py-3 rounded-xl flex flex-col items-center gap-1 text-blue-600 transition-colors" id="nav-verify">
+            <i class="fa-solid fa-clipboard-check text-lg"></i>
+            <span class="text-[10px] font-bold">VERIFY</span>
+        </button>
+        <button onclick="switchTab('scan')" class="flex-1 py-3 rounded-xl flex flex-col items-center gap-1 text-gray-400 transition-colors" id="nav-scan">
+            <i class="fa-solid fa-qrcode text-lg"></i>
+            <span class="text-[10px] font-bold">SCANNER</span>
+        </button>
+    </nav>
+
+    <script>
+        // --- AUTH: Updated Password ---
+        function unlock() {
+            const pass = document.getElementById('passInput').value;
+            if(pass === '7894') { // <--- NEW PASSWORD
+                document.getElementById('loginScreen').classList.add('hidden');
+                document.getElementById('bottomNav').classList.remove('hidden');
+                fetchPending();
+            } else {
+                alert("Incorrect PIN");
+                document.getElementById('passInput').value = '';
+            }
+        }
+
+        // --- NAVIGATION ---
+        let html5QrCode;
+        function switchTab(tab) {
+            document.querySelectorAll('section').forEach(s => s.classList.add('hidden'));
+            document.getElementById(`tab-${tab}`).classList.remove('hidden');
+            
+            // Icons Update
+            const btnVerify = document.getElementById('nav-verify');
+            const btnScan = document.getElementById('nav-scan');
+            
+            if(tab === 'verify') {
+                btnVerify.className = "flex-1 py-3 rounded-xl flex flex-col items-center gap-1 text-blue-600";
+                btnScan.className = "flex-1 py-3 rounded-xl flex flex-col items-center gap-1 text-gray-400";
+                stopCamera();
+            } else {
+                btnVerify.className = "flex-1 py-3 rounded-xl flex flex-col items-center gap-1 text-gray-400";
+                btnScan.className = "flex-1 py-3 rounded-xl flex flex-col items-center gap-1 text-blue-600";
+                startCamera();
+            }
+        }
+
+        // --- DATA LOGIC ---
+        let allPendingUsers = [];
+
+        async function fetchPending() {
+            const list = document.getElementById('pendingList');
+            list.innerHTML = `<div class="flex justify-center py-10"><div class="loader"></div></div>`;
+            
+            try {
+                const res = await fetch('/api/admin-data');
+                allPendingUsers = await res.json();
+                renderList(allPendingUsers);
+            } catch(err) {
+                list.innerHTML = `<div class="text-center py-10 text-red-500 text-sm">Failed to load data</div>`;
+            }
+        }
+
+        function renderList(users) {
+            const list = document.getElementById('pendingList');
+            list.innerHTML = '';
+
+            if(users.length === 0) {
+                list.innerHTML = `<div class="text-center py-12 text-gray-400 flex flex-col items-center"><i class="fa-regular fa-folder-open text-3xl mb-3 opacity-50"></i>No pending payments</div>`;
+                return;
+            }
+
+            users.forEach(user => {
+                const card = document.createElement('div');
+                card.className = 'card p-4 animate-fade-in';
+                // Added Occupation Display
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-3">
+                        <div>
+                            <h3 class="font-bold text-gray-900 text-lg leading-tight">${user.name}</h3>
+                            <p class="text-xs text-blue-600 font-semibold uppercase tracking-wider mt-1">${user.occupation || 'Unknown'}</p>
+                        </div>
+                        <span class="bg-blue-50 text-blue-700 text-xs font-bold px-2.5 py-1 rounded-lg">₹${user.amount}</span>
+                    </div>
+                    
+                    <div class="bg-gray-50 p-2.5 rounded-lg mb-4 border border-gray-100 flex justify-between items-center">
+                        <span class="text-xs text-gray-500 font-medium">UTR REF</span>
+                        <span class="text-sm font-mono text-gray-700 font-bold select-all">${user.paymentId}</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <button onclick="processUser('${user.tokenID}', '${user.email}', '${user.name}', 'REJECT', this)" class="btn-press bg-white border border-red-200 text-red-500 py-3 rounded-xl text-sm font-bold shadow-sm">REJECT</button>
+                        <button onclick="processUser('${user.tokenID}', '${user.email}', '${user.name}', 'APPROVE', this)" class="btn-press bg-green-500 text-white py-3 rounded-xl text-sm font-bold shadow-lg shadow-green-200">APPROVE</button>
+                    </div>
+                `;
+                list.appendChild(card);
+            });
+        }
+
+        function filterList() {
+            const term = document.getElementById('searchInput').value.toLowerCase();
+            const filtered = allPendingUsers.filter(u => 
+                u.name.toLowerCase().includes(term) || 
+                u.paymentId.toLowerCase().includes(term)
+            );
+            renderList(filtered);
+        }
+
+        async function processUser(tokenID, email, name, action, btn) {
+            if(!confirm(`${action} ${name}?`)) return;
+            
+            const card = btn.closest('.card');
+            card.style.opacity = '0.5';
+            card.style.pointerEvents = 'none';
+            btn.innerHTML = '...';
+
+            try {
+                const res = await fetch('/api/admin-data', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ tokenID, email, name, action })
+                });
+                const result = await res.json();
+                
+                if(result.success) {
+                    card.remove();
+                    allPendingUsers = allPendingUsers.filter(u => u.tokenID !== tokenID);
+                    if(allPendingUsers.length === 0) renderList([]); 
+                } else {
+                    alert("Error: " + result.error);
+                    card.style.opacity = '1';
+                }
+            } catch(err) {
+                alert("Network Fail");
+                card.style.opacity = '1';
+            }
+        }
+
+        // --- SCANNER ---
+        function startCamera() {
+            if(html5QrCode) return;
+            html5QrCode = new Html5Qrcode("reader");
+            html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } }, onScanSuccess)
+            .catch(err => document.getElementById('reader').innerHTML = `<p class="text-red-500 text-center p-4 text-xs">Camera blocked</p>`);
+        }
+
+        function stopCamera() {
+            if(html5QrCode) {
+                html5QrCode.stop().then(() => { html5QrCode.clear(); html5QrCode = null; });
+            }
+        }
+
+        async function onScanSuccess(decodedText) {
+            html5QrCode.pause();
+            const modal = document.getElementById('scanResult');
+            const icon = document.getElementById('scanIcon');
+            const title = document.getElementById('scanTitle');
+            const meta = document.getElementById('scanMeta');
+
+            modal.style.transform = 'translateY(0)';
+            title.innerText = "Checking...";
+            icon.className = "w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gray-100 text-gray-500";
+            icon.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+
+            try {
+                const res = await fetch('/api/admin-scan', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ tokenID: decodedText })
+                });
+                const data = await res.json();
+
+                if(data.valid) {
+                    icon.className = "w-12 h-12 rounded-full flex items-center justify-center text-xl bg-green-100 text-green-600";
+                    icon.innerHTML = '<i class="fa-solid fa-check"></i>';
+                    title.innerText = "Verified";
+                    title.className = "text-lg font-bold mb-1 text-green-600";
+                    meta.innerHTML = `<span class="text-gray-900 font-bold">${data.name}</span><br>${data.foodType}`;
+                } else {
+                    icon.className = "w-12 h-12 rounded-full flex items-center justify-center text-xl bg-red-100 text-red-600";
+                    icon.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+                    title.innerText = "Invalid";
+                    title.className = "text-lg font-bold mb-1 text-red-600";
+                    meta.innerText = data.error;
+                }
+            } catch(err) {
+                title.innerText = "Error";
+            }
+        }
+
+        function closeScanResult() {
+            document.getElementById('scanResult').style.transform = 'translateY(120%)';
+            if(html5QrCode) html5QrCode.resume();
+        }
+    </script>
+</body>
+</html>
